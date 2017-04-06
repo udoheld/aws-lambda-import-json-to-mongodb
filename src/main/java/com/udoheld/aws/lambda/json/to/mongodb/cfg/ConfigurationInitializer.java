@@ -35,6 +35,7 @@ public class ConfigurationInitializer {
   public static final String CFG_MONGODB_HOSTS = "MongoDB_Hosts";
   public static final String CFG_MONGODB_DATABASE = "MongoDB_Database";
   public static final String CFG_MONGODB_OPTIONS = "MongoDB_Options";
+  public static final String CFG_MONGODB_KEEP_CONNECTION = "MongoDB_Keep_Connection";
 
   private final Config config;
   private final Context context;
@@ -82,6 +83,7 @@ public class ConfigurationInitializer {
     config.setMongoDbOptions(readValue(CFG_MONGODB_OPTIONS,""));
     config.setMongoDbDatabase(readValue(CFG_MONGODB_DATABASE,
         config.isLocaltest() ? unitTestDefaultDb : ""));
+    config.setMongoDbKeepConnection(readValue(CFG_MONGODB_KEEP_CONNECTION, false));
   }
 
   private boolean readValue(String key, boolean defaultValue) {

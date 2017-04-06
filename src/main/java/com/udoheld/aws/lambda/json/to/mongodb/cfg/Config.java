@@ -31,6 +31,7 @@ public class Config {
   private String mongoDbHosts;
   private String mongoDbDatabase;
   private String mongoDbOptions;
+  private boolean mongoDbKeepConnection;
 
   public boolean isDebug() {
     return debug;
@@ -86,5 +87,13 @@ public class Config {
 
   public void setMongoDbOptions(String mongoDbOptions) {
     this.mongoDbOptions = mongoDbOptions;
+  }
+
+  public boolean isMongoDbKeepConnection() {
+    return mongoDbKeepConnection;
+  }
+
+  public void setMongoDbKeepConnection(boolean mongoDbKeepConnection) {
+    this.mongoDbKeepConnection = mongoDbKeepConnection;
   }
 }

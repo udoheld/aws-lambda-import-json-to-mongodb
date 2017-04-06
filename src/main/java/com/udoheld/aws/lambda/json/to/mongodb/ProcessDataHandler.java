@@ -28,6 +28,7 @@ import com.udoheld.iot.json.api.SensorData;
 import org.mongodb.morphia.AdvancedDatastore;
 import org.mongodb.morphia.Morphia;
 
+import java.io.Closeable;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -47,29 +48,66 @@ import java.util.stream.Stream;
  *
  * @author Udo Held
  */
-public class ProcessDataHandler implements AutoCloseable {
+public class ProcessDataHandler implements Closeable {
 
   public static final int MAX_WRITE_ATTEMPTS = 10;
 
-  private MongoClient mongoClient;
+  private static MongoClient globalMongoClient;
+  private MongoClient localMongoClient;
   private InputParser inputParser = new InputParser();
   private Morphia mongoMorphia;
   private AdvancedDatastore mongoDatastore;
+  private final boolean createGlobalConnection;
 
-  private ProcessDataHandler(String connectionUri, String database) {
+  private ProcessDataHandler(String connectionUri, String database,
+                             boolean createGlobalConnection) {
+    this.createGlobalConnection = createGlobalConnection;
     init(connectionUri, database);
   }
 
   private void init(String connectionUri, String database) {
-    MongoClientURI uri = new MongoClientURI(connectionUri);
-    mongoClient = new MongoClient(uri);
+    MongoClient mongoClient = initConnection(connectionUri);
+
     mongoMorphia = new Morphia();
     mongoMorphia.map(MongoSensorData.class);
     mongoDatastore = (AdvancedDatastore) mongoMorphia.createDatastore(mongoClient, database);
   }
 
-  public static ProcessDataHandler getProcessDataHandler(String connectionUri, String database) {
-    return new ProcessDataHandler(connectionUri, database);
+  private MongoClient initConnection(String connectionUri) {
+    MongoClientURI uri = new MongoClientURI(connectionUri);
+    MongoClient mongoClient;
+    if (createGlobalConnection) {
+      mongoClient =  initGlobalConnection(uri);
+    } else {
+      mongoClient = new MongoClient(uri);
+      localMongoClient = mongoClient;
+    }
+    return mongoClient;
+  }
+
+  /**
+   * Initiates a global MongoDB connection.
+   * @param mongoUri mongoDB connection Uri
+   * @return MongoDB connection
+   */
+  private synchronized MongoClient initGlobalConnection(MongoClientURI mongoUri) {
+    if (globalMongoClient == null) {
+      globalMongoClient = new MongoClient(mongoUri);
+    }
+    return globalMongoClient;
+  }
+
+  /**
+   * Initiates the ProcessHandler for input processing.
+   * @param connectionUri connectionUri
+   * @param database databaseName
+   * @param createGlobalConnection Creates a global connection that can be reused. The connection
+   *                               will be closed if {@link #close} is called.
+   * @return ProcessDataHandler.
+   */
+  public static ProcessDataHandler getProcessDataHandler(String connectionUri, String database,
+                                                         boolean createGlobalConnection) {
+    return new ProcessDataHandler(connectionUri, database, createGlobalConnection );
   }
 
   /**
@@ -277,9 +315,15 @@ public class ProcessDataHandler implements AutoCloseable {
 
 
   @Override
-  public void close() throws Exception {
-    if (mongoClient != null ) {
-      mongoClient.close();
+  public void close() {
+    if (createGlobalConnection) {
+      if (globalMongoClient != null ) {
+        globalMongoClient.close();
+      }
+    } else {
+      if (localMongoClient != null) {
+        localMongoClient.close();
+      }
     }
   }
 }

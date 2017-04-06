@@ -50,8 +50,6 @@ public class TestProcessDataHandler {
   private String mongoDbDatabase = "unitTest";
   private String mongoDbCollection = "sensorData";
 
-
-
   private String readTestFile() throws IOException {
     InputStream is = this.getClass().getClassLoader().getResourceAsStream("test.json");
     assertNotNull(is);
@@ -79,19 +77,21 @@ public class TestProcessDataHandler {
 
     Map<String, Map<String, Map<LocalDate, MongoSensorData>>> sensorHolder = new HashMap<>();
 
-    ProcessDataHandler dataHandler
-        = ProcessDataHandler.getProcessDataHandler (mongoDbConnectionUrl,mongoDbDatabase);
-    Method method = dataHandler.getClass().getDeclaredMethod("mergeSensorData",
-        sensorData.getClass(),Map.class);
-    method.setAccessible(true);
-    method.invoke(dataHandler,sensorData,sensorHolder);
+    try (ProcessDataHandler dataHandler
+             = ProcessDataHandler.getProcessDataHandler (mongoDbConnectionUrl,mongoDbDatabase,
+        true)) {
+      Method method = dataHandler.getClass().getDeclaredMethod("mergeSensorData",
+          sensorData.getClass(),Map.class);
+      method.setAccessible(true);
+      method.invoke(dataHandler,sensorData,sensorHolder);
 
-    assertTrue(sensorHolder.size() == 2);
-    assertTrue(sensorHolder.containsKey("urn:dev:mac:784b87a58c3d;temp1"));
-    assertTrue(sensorHolder.get("urn:dev:mac:784b87a58c3d;temp1").size() == 2);
+      assertTrue(sensorHolder.size() == 2);
+      assertTrue(sensorHolder.containsKey("urn:dev:mac:784b87a58c3d;temp1"));
+      assertTrue(sensorHolder.get("urn:dev:mac:784b87a58c3d;temp1").size() == 2);
 
-    assertTrue(sensorHolder.containsKey("urn:dev:mac:784b87a58c3d;temp2"));
-    assertTrue(sensorHolder.get("urn:dev:mac:784b87a58c3d;temp2").size() == 1);
+      assertTrue(sensorHolder.containsKey("urn:dev:mac:784b87a58c3d;temp2"));
+      assertTrue(sensorHolder.get("urn:dev:mac:784b87a58c3d;temp2").size() == 1);
+    }
   }
 
   @Test
@@ -102,9 +102,11 @@ public class TestProcessDataHandler {
       MongoCollection mongoCollection = mongoDatabase.getCollection(mongoDbCollection);
       mongoCollection.drop();
 
-      ProcessDataHandler dataHandler =
-          ProcessDataHandler.getProcessDataHandler(mongoDbConnectionUrl,mongoDbDatabase);
-      dataHandler.processInput(readTestFile());
+      try ( ProcessDataHandler dataHandler
+                = ProcessDataHandler.getProcessDataHandler(mongoDbConnectionUrl, mongoDbDatabase,
+                false)) {
+        dataHandler.processInput(readTestFile());
+      }
       assertEquals(6l, mongoCollection.count());
       Bson filter = combine(eq("_id.device","urn:dev:mac:784b87a58c3d;temp2"),
           eq("_id.type","temp"));
@@ -131,23 +133,25 @@ public class TestProcessDataHandler {
     existingData.getDetailed().put(5, new HashMap<>());
     existingData.getDetailed().get(5).put(5,5.0);
 
-    ProcessDataHandler dataHandler
-        = ProcessDataHandler.getProcessDataHandler (mongoDbConnectionUrl,mongoDbDatabase);
-    Method method = dataHandler.getClass().getDeclaredMethod("mergeRecords",
-        srcData.getClass(),existingData.getClass());
-    method.setAccessible(true);
-    MongoSensorData merged = (MongoSensorData) method.invoke(dataHandler, srcData, existingData);
+    try (ProcessDataHandler dataHandler
+             = ProcessDataHandler.getProcessDataHandler(mongoDbConnectionUrl, mongoDbDatabase,
+        false)) {
+      Method method = dataHandler.getClass().getDeclaredMethod("mergeRecords",
+          srcData.getClass(), existingData.getClass());
+      method.setAccessible(true);
+      MongoSensorData merged = (MongoSensorData) method.invoke(dataHandler, srcData, existingData);
 
-    assertNotNull(merged);
-    assertNotNull(merged.getDetailed());
-    assertTrue(merged.getDetailed().containsKey(1));
-    assertTrue(merged.getDetailed().containsKey(2));
-    assertTrue(merged.getDetailed().containsKey(5));
+      assertNotNull(merged);
+      assertNotNull(merged.getDetailed());
+      assertTrue(merged.getDetailed().containsKey(1));
+      assertTrue(merged.getDetailed().containsKey(2));
+      assertTrue(merged.getDetailed().containsKey(5));
 
-    assertEquals(1.0, existingData.getDetailed().get(1).get(1).byteValue(),0.0);
-    assertEquals(2.0, existingData.getDetailed().get(1).get(2).byteValue(),0.0);
-    assertEquals(4.0, existingData.getDetailed().get(1).get(4).byteValue(),0.0);
-    assertEquals(3.0, existingData.getDetailed().get(2).get(3).byteValue(),0.0);
-    assertEquals(5.0, existingData.getDetailed().get(5).get(5).byteValue(),0.0);
+      assertEquals(1.0, existingData.getDetailed().get(1).get(1).byteValue(), 0.0);
+      assertEquals(2.0, existingData.getDetailed().get(1).get(2).byteValue(), 0.0);
+      assertEquals(4.0, existingData.getDetailed().get(1).get(4).byteValue(), 0.0);
+      assertEquals(3.0, existingData.getDetailed().get(2).get(3).byteValue(), 0.0);
+      assertEquals(5.0, existingData.getDetailed().get(5).get(5).byteValue(), 0.0);
+    }
   }
 }

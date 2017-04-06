@@ -45,13 +45,16 @@ public class LambdaHandler implements RequestStreamHandler {
 
     String connectionUri = ConfigurationInitializer.buildConnectionUri(config);
 
-    try (ProcessDataHandler pdh
-        = ProcessDataHandler.getProcessDataHandler(connectionUri, config.getMongoDbDatabase())) {
+    ProcessDataHandler pdh = null;
+    try {
+      pdh = ProcessDataHandler.getProcessDataHandler(connectionUri, config.getMongoDbDatabase(),
+          config.isMongoDbKeepConnection());
       pdh.processInput(input);
-    } catch (Exception e) {
-      context.getLogger().log(e.getMessage());
+    } finally {
+      if (!config.isMongoDbKeepConnection() && pdh != null) {
+        pdh.close();
+      }
     }
-
   }
 
   private String readInputStream(InputStream inputStream) throws IOException {
