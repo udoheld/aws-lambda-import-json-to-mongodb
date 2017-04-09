@@ -231,7 +231,7 @@ public class MongoSensorData implements Cloneable {
                 new Integer(x.getKey()),x.getValue() == null ? null : new Double(x.getValue())));
         clone.setAverage(clonedAverage);
       }
-      return clone();
+      return clone;
     }
 
     @Override
