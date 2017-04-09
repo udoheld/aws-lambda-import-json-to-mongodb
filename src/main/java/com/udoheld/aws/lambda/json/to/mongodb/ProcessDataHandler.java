@@ -18,6 +18,7 @@
 
 package com.udoheld.aws.lambda.json.to.mongodb;
 
+import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.mongodb.DuplicateKeyException;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
@@ -58,14 +59,18 @@ public class ProcessDataHandler implements Closeable {
   private Morphia mongoMorphia;
   private AdvancedDatastore mongoDatastore;
   private final boolean createGlobalConnection;
+  private LambdaLogger logger;
+  private boolean debug;
 
   private ProcessDataHandler(String connectionUri, String database,
-                             boolean createGlobalConnection) {
+                             boolean createGlobalConnection, boolean debug, LambdaLogger logger) {
     this.createGlobalConnection = createGlobalConnection;
-    init(connectionUri, database);
+    init(connectionUri, database, debug, logger);
   }
 
-  private void init(String connectionUri, String database) {
+  private void init(String connectionUri, String database, boolean debug, LambdaLogger logger) {
+    this.debug = debug;
+    this.logger = logger;
     MongoClient mongoClient = initConnection(connectionUri);
 
     mongoMorphia = new Morphia();
@@ -92,6 +97,9 @@ public class ProcessDataHandler implements Closeable {
    */
   private synchronized MongoClient initGlobalConnection(MongoClientURI mongoUri) {
     if (globalMongoClient == null) {
+      if (debug) {
+        logger.log("Retrieving new connection.");
+      }
       globalMongoClient = new MongoClient(mongoUri);
     }
     return globalMongoClient;
@@ -103,11 +111,14 @@ public class ProcessDataHandler implements Closeable {
    * @param database databaseName
    * @param createGlobalConnection Creates a global connection that can be reused. The connection
    *                               will be closed if {@link #close} is called.
+   * @param debug Enable debug logging.
+   * @param logger Logger
    * @return ProcessDataHandler.
    */
   public static ProcessDataHandler getProcessDataHandler(String connectionUri, String database,
-                                                         boolean createGlobalConnection) {
-    return new ProcessDataHandler(connectionUri, database, createGlobalConnection );
+                                                         boolean createGlobalConnection,
+                                                         boolean debug, LambdaLogger logger) {
+    return new ProcessDataHandler(connectionUri, database, createGlobalConnection, debug, logger);
   }
 
   /**
@@ -117,10 +128,16 @@ public class ProcessDataHandler implements Closeable {
   public void processInput(String input) {
     SensorData [] sensorData = inputParser.parseInput(input);
 
+    if (debug) {
+      logger.log("Found " + sensorData.length + " record(s.)");
+    }
+
     // device, type, date
     Map<String, Map<String, Map<LocalDate, MongoSensorData>>> sensorHolder = new HashMap<>();
     mergeSensorData(sensorData,sensorHolder);
-
+    if (debug) {
+      logger.log("Writing records.");
+    }
     storeSensorData(sensorHolder);
   }
 
@@ -135,12 +152,21 @@ public class ProcessDataHandler implements Closeable {
 
   private void storeRecord(MongoSensorData mongoSensorData) {
     int writeAttempts = 0;
-
+    if (debug) {
+      logger.log("Writing record: " + mongoSensorData.getId().getDevice() + " "
+          + mongoSensorData.getId().getType() + " " + mongoSensorData.getId().getDate());
+    }
     boolean writtenRecord = false;
 
     while (writeAttempts++ < MAX_WRITE_ATTEMPTS && ! writtenRecord ) {
       writtenRecord = attemptRecordWrite(mongoSensorData);
     }
+
+    if (debug) {
+      logger.log("Record written " + writtenRecord + " after " + ( writeAttempts - 1 )
+          + " attempts.");
+    }
+
     if (!writtenRecord) {
       throw new ConcurrentModificationException("Unable to write record to database probably due to"
           + " concurrent modification of the record. Giving up after " + MAX_WRITE_ATTEMPTS
@@ -150,11 +176,11 @@ public class ProcessDataHandler implements Closeable {
 
   private boolean attemptRecordWrite(MongoSensorData mongoSensorData) {
     MongoSensorData existingRecord
-        = mongoDatastore.get(mongoSensorData.getClass(),mongoSensorData.getId());
+        = mongoDatastore.get(mongoSensorData.getClass(), mongoSensorData.getId());
     try {
       MongoSensorData srcRecord = (MongoSensorData) mongoSensorData.clone();
 
-      MongoSensorData mergedRecord = mergeRecords(srcRecord,existingRecord);
+      MongoSensorData mergedRecord = mergeRecords(srcRecord, existingRecord);
 
       return writeRecord(mergedRecord, existingRecord == null);
 
@@ -181,6 +207,12 @@ public class ProcessDataHandler implements Closeable {
     return true;
   }
 
+  /**
+   * Merges two MongoSensorData records. The new srcData will overwrite any existing records.
+   * @param srcData New recorded to be merged.
+   * @param existing Existing record to be updated.
+   * @return Merged record.
+   */
   private MongoSensorData mergeRecords(MongoSensorData srcData, MongoSensorData existing) {
 
     final MongoSensorData target = existing == null ? srcData : existing;
@@ -212,6 +244,10 @@ public class ProcessDataHandler implements Closeable {
     return target;
   }
 
+  /**
+   * Recalculates the summary and updates the current summary record.
+   * @param record Record for which the summary needs to be updated.
+   */
   private void calculateSummary(MongoSensorData record) {
     MongoSensorData.Summary summary = new MongoSensorData.Summary();
     Map<Integer,Double> average = new HashMap<>();
@@ -235,6 +271,11 @@ public class ProcessDataHandler implements Closeable {
     record.setSummary(summary);
   }
 
+  /**
+   * Adds all records to the current dataHolder.
+   * @param sensorData Records to be merged.
+   * @param sensorHolder Target structure.
+   */
   private void mergeSensorData(SensorData[] sensorData,
                      Map<String, Map<String, Map<LocalDate, MongoSensorData>>> sensorHolder) {
     Stream.of(sensorData)
@@ -244,6 +285,11 @@ public class ProcessDataHandler implements Closeable {
         .forEach(x -> mergeDevice(x,sensorHolder));
   }
 
+  /**
+   * Checks if all necessary parameters are present.
+   * @param dataHolder Input to be validated.
+   * @return true, if input was valid.
+   */
   private boolean validateMeasurement(DataHolder dataHolder) {
     if (dataHolder.getBaseName() == null || dataHolder.getBaseName().isEmpty()
         || dataHolder.getName() == null || dataHolder.getName().isEmpty()
@@ -252,7 +298,6 @@ public class ProcessDataHandler implements Closeable {
     }
     return true;
   }
-
 
   private void mergeDevice(DataHolder dataHolder,
                            Map<String, Map<String, Map<LocalDate, MongoSensorData>>> sensorHolder) {
@@ -279,6 +324,11 @@ public class ProcessDataHandler implements Closeable {
     hour.put(dateTime.getMinute(),dataHolder.getValue());
   }
 
+  /**
+   * Create new MongoSensorData object, with basic data form dataHolder.
+   * @param dataHolder Dataholder for initialization.
+   * @return Initialized MongoSensorData object.
+   */
   private MongoSensorData createMongoSensorData(DataHolder dataHolder) {
 
     MongoSensorData.Id id = new MongoSensorData.Id();

@@ -18,6 +18,7 @@
 
 package com.udoheld.aws.lambda.json.to.mongodb;
 
+import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.client.MongoCollection;
@@ -34,6 +35,7 @@ import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.logging.Logger;
 
 import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Updates.combine;
@@ -79,7 +81,7 @@ public class TestProcessDataHandler {
 
     try (ProcessDataHandler dataHandler
              = ProcessDataHandler.getProcessDataHandler (mongoDbConnectionUrl,mongoDbDatabase,
-        true)) {
+        true, false, getLogger())) {
       Method method = dataHandler.getClass().getDeclaredMethod("mergeSensorData",
           sensorData.getClass(),Map.class);
       method.setAccessible(true);
@@ -104,7 +106,7 @@ public class TestProcessDataHandler {
 
       try ( ProcessDataHandler dataHandler
                 = ProcessDataHandler.getProcessDataHandler(mongoDbConnectionUrl, mongoDbDatabase,
-                false)) {
+                false, true, getLogger())) {
         dataHandler.processInput(readTestFile());
       }
       assertEquals(6l, mongoCollection.count());
@@ -129,13 +131,16 @@ public class TestProcessDataHandler {
     existingData.setDetailed(new HashMap<>());
     existingData.getDetailed().put(1, new HashMap<>());
     existingData.getDetailed().get(1).put(1,1.5);
-    existingData.getDetailed().get(1).put(4,4.0);
+    existingData.getDetailed().get(1).put(6,6.0);
     existingData.getDetailed().put(5, new HashMap<>());
     existingData.getDetailed().get(5).put(5,5.0);
+    srcData.setSummary(new MongoSensorData.Summary());
+    srcData.getSummary().setAverage(new HashMap<>());
+    srcData.getSummary().getAverage().put(1,2.25);
 
     try (ProcessDataHandler dataHandler
              = ProcessDataHandler.getProcessDataHandler(mongoDbConnectionUrl, mongoDbDatabase,
-        false)) {
+        false, true, getLogger())) {
       Method method = dataHandler.getClass().getDeclaredMethod("mergeRecords",
           srcData.getClass(), existingData.getClass());
       method.setAccessible(true);
@@ -143,15 +148,27 @@ public class TestProcessDataHandler {
 
       assertNotNull(merged);
       assertNotNull(merged.getDetailed());
+      assertNotNull(merged.getSummary());
+      assertNotNull(merged.getSummary().getAverage());
       assertTrue(merged.getDetailed().containsKey(1));
       assertTrue(merged.getDetailed().containsKey(2));
       assertTrue(merged.getDetailed().containsKey(5));
 
-      assertEquals(1.0, existingData.getDetailed().get(1).get(1).byteValue(), 0.0);
-      assertEquals(2.0, existingData.getDetailed().get(1).get(2).byteValue(), 0.0);
-      assertEquals(4.0, existingData.getDetailed().get(1).get(4).byteValue(), 0.0);
-      assertEquals(3.0, existingData.getDetailed().get(2).get(3).byteValue(), 0.0);
-      assertEquals(5.0, existingData.getDetailed().get(5).get(5).byteValue(), 0.0);
+      assertEquals(1.0, merged.getDetailed().get(1).get(1).byteValue(), 0.0);
+      assertEquals(2.0, merged.getDetailed().get(1).get(2).byteValue(), 0.0);
+      assertEquals(6.0, merged.getDetailed().get(1).get(6).byteValue(), 0.0);
+      assertEquals(3.0, merged.getDetailed().get(2).get(3).byteValue(), 0.0);
+      assertEquals(5.0, merged.getDetailed().get(5).get(5).byteValue(), 0.0);
+
+      assertEquals(3.0, merged.getSummary().getAverage().get(1).doubleValue(),0.0);
     }
+  }
+
+  private LambdaLogger getLogger(){
+    Logger logger = Logger.getLogger(LambdaLogger.class.getName());
+
+    LambdaLogger log = message -> logger.finest(message);
+
+    return log;
   }
 }

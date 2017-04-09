@@ -28,7 +28,9 @@ import com.mongodb.MongoClientURI;
 public class ConfigurationInitializer {
   private String unitTestDefaultDb = "unitTest";
 
-  public static final String CFG_DEBUG = "debug";
+  public static final String CFG_DEBUG = "Debug";
+  public static final String CFG_DEBUG_INPUT = "Debug_Input";
+  public static final String CFG_DISABLE_SNS_REMOVAL = "Disable_SNS_Removal";
   public static final String CFG_LOCALTEST = "localtest";
   public static final String CFG_MONGODB_USERNAME = "MongoDB_Username";
   public static final String CFG_MONGODB_PASSWORD = "MongoDB_Password";
@@ -63,6 +65,8 @@ public class ConfigurationInitializer {
       config.setDebug(debug);
     }
     config.setLocaltest(readValue(CFG_LOCALTEST, false));
+    config.setDebugInput(readValue(CFG_DEBUG_INPUT,false));
+    config.setDisableSnsRemoval(readValue(CFG_DISABLE_SNS_REMOVAL, false));
 
     initMongoDb();
 

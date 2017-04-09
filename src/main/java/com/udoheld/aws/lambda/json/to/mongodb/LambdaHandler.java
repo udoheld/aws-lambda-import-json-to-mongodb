@@ -35,25 +35,37 @@ public class LambdaHandler implements RequestStreamHandler {
   @Override
   public void handleRequest(InputStream inputStream, OutputStream outputStream, Context context)
       throws IOException {
-    Config config = ConfigurationInitializer.initializeConfig(context,false);
-
-    String input = null;
     try {
-      input = readInputStream(inputStream);
-    } catch (IOException expected) {
-    }
+      Config config = ConfigurationInitializer.initializeConfig(context,false);
 
-    String connectionUri = ConfigurationInitializer.buildConnectionUri(config);
-
-    ProcessDataHandler pdh = null;
-    try {
-      pdh = ProcessDataHandler.getProcessDataHandler(connectionUri, config.getMongoDbDatabase(),
-          config.isMongoDbKeepConnection());
-      pdh.processInput(input);
-    } finally {
-      if (!config.isMongoDbKeepConnection() && pdh != null) {
-        pdh.close();
+      String input = null;
+      try {
+        input = readInputStream(inputStream);
+      } catch (IOException expected) {
       }
+
+      if (input != null && ! config.isDisableSnsRemoval() && input.contains("aws:sns")) {
+        input = SnsMessageExtractor.extractSnsMessage(input);
+      }
+
+      if (config.isDebugInput()) {
+        context.getLogger().log(input);
+      }
+
+      String connectionUri = ConfigurationInitializer.buildConnectionUri(config);
+
+      ProcessDataHandler pdh = null;
+      try {
+        pdh = ProcessDataHandler.getProcessDataHandler(connectionUri, config.getMongoDbDatabase(),
+            config.isMongoDbKeepConnection(), config.isDebug(), context.getLogger());
+        pdh.processInput(input);
+      } finally {
+        if (!config.isMongoDbKeepConnection() && pdh != null) {
+          pdh.close();
+        }
+      }
+    } catch (Exception e) {
+      context.getLogger().log(e.getMessage());
     }
   }
 

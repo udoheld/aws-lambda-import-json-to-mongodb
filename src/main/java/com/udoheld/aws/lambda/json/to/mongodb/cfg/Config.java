@@ -24,6 +24,8 @@ package com.udoheld.aws.lambda.json.to.mongodb.cfg;
  */
 public class Config {
   private boolean debug;
+  private boolean debugInput;
+  private boolean disableSnsRemoval;
   private boolean localtest;
 
   private String mongoDbUsername;
@@ -39,6 +41,22 @@ public class Config {
 
   public void setDebug(boolean debug) {
     this.debug = debug;
+  }
+
+  public boolean isDebugInput() {
+    return debugInput;
+  }
+
+  public void setDebugInput(boolean debugInput) {
+    this.debugInput = debugInput;
+  }
+
+  public boolean isDisableSnsRemoval() {
+    return disableSnsRemoval;
+  }
+
+  public void setDisableSnsRemoval(boolean disableSnsRemoval) {
+    this.disableSnsRemoval = disableSnsRemoval;
   }
 
   public boolean isLocaltest() {
